@@ -8,10 +8,12 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <signal.h>
+#include <semaphore.h>
 
-#define MAX_CONVEYOR_BRICKS_NUMBER 12
+#define MAX_CONVEYOR_BRICKS_NUMBER 15
 //#define MAX_CONVEYOR_BRICKS_WEIGHT 35
-#define CONVEYOR_TRANSPORT_TIME 5
+#define CONVEYOR_TRANSPORT_TIME 10
+#define BRICK_PICKUP_TIME 1000000
 
 typedef struct Brick {
     int id;
@@ -24,6 +26,7 @@ typedef struct ConveyorBelt {
     int front;
     int rear;
     int size;
+    int lastBrickId;
 } ConveyorBelt;
 
 void initializeConveyor(ConveyorBelt* q);
