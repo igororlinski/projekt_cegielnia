@@ -12,7 +12,7 @@
 #include <sys/sem.h>
 
 #define MAX_CONVEYOR_BRICKS_NUMBER 15
-//#define MAX_CONVEYOR_BRICKS_WEIGHT 35
+#define MAX_CONVEYOR_BRICKS_WEIGHT 24
 #define CONVEYOR_TRANSPORT_TIME 10
 #define WORKER_PICKUP_TIME_W1 1000000
 #define WORKER_PICKUP_TIME_W2 2100000
@@ -20,7 +20,7 @@
 
 typedef struct Brick {
     int id;
-    //int weight;
+    int weight;
     time_t added_time;
 } Brick;
 
@@ -28,12 +28,11 @@ typedef struct ConveyorBelt {
     Brick bricks[MAX_CONVEYOR_BRICKS_NUMBER];
     int front;
     int rear;
-    int size;
     int lastBrickId;
 } ConveyorBelt;
 
 void initializeConveyor(ConveyorBelt* q);
-void addBrick(ConveyorBelt* q, int id);
+void addBrick(ConveyorBelt* q, int id, int brick_weight);
 void removeBrick(ConveyorBelt* q);
 void checkAndUnloadBricks(ConveyorBelt* q);
 void* monitorConveyor(void* arg);
