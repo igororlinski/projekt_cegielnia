@@ -27,6 +27,8 @@ int main() {
 
     initializeConveyor(conveyor);
 
+    const int worker_pickup_times[3] = {WORKER_PICKUP_TIME_W1, WORKER_PICKUP_TIME_W2, WORKER_PICKUP_TIME_W3};
+
     pid_t worker_pids[3];
     for (int i = 0; i < 3; i++) {
         pid_t pid = fork();
@@ -34,7 +36,7 @@ int main() {
             perror("fork error");
             exit(1);
         } else if (pid == 0) {
-            worker(i + 1, conveyor);
+            worker(i + 1, conveyor, worker_pickup_times);
             exit(0);
         } else {
             worker_pids[i] = pid;
@@ -46,11 +48,12 @@ int main() {
         usleep(100000);
     }
 
-    printf("\nZakończenie programu... Zwolnienie zasobów.\n");
-
     for (int i = 0; i < 3; i++) {
         kill(worker_pids[i], SIGTERM); 
     }
+    
+    printf("\nZakończenie programu... Zwolnienie zasobów.\n");
+
     shmdt(conveyor);
     shmctl(shmId, IPC_RMID, NULL);
 
