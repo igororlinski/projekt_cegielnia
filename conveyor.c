@@ -32,20 +32,6 @@ void addBrick(ConveyorBelt* q, int workerId, int brick_weight) {
     op.sem_flg = 0;
     semop(semid_add_brick, &op, 1);
 
-    if (semctl(semid_conveyor_capacity, 0, GETVAL) == 0) {
-        printf("Taśma jest pełna! Pracownik %d nie mógł dodać kolejnej cegły.\n", workerId);
-        op.sem_op = 1;
-        semop(semid_add_brick, &op, 1);
-        return;
-    }
-
-    if (semctl(semid_weight_capacity, 0, GETVAL) <= 0) {
-        printf("Pracownik %d nie mógł dodać cegły o wadze %d, ponieważ taśma byłaby przeciążona!\n", workerId, brick_weight);
-        op.sem_op = 1;
-        semop(semid_add_brick, &op, 1);
-        return;
-    }
-
     op.sem_num = 0;
     op.sem_op = -1;
     semop(semid_conveyor_capacity, &op, 1); 

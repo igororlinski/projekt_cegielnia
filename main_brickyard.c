@@ -1,6 +1,7 @@
 #include "brickyard.h"
 
 volatile sig_atomic_t continue_production = 1;
+Queue queue;
 
 void signalHandler(int sig) {
     (void)sig;
@@ -26,6 +27,10 @@ int main() {
     }
 
     initializeConveyor(conveyor);
+
+    initializeQueue(&queue);
+    pthread_t queue_checking_thread;
+    pthread_create(&queue_checking_thread, NULL, chceckQueue, (void*)&conveyor);
 
     const int worker_pickup_times[3] = {WORKER_PICKUP_TIME_W1, WORKER_PICKUP_TIME_W2, WORKER_PICKUP_TIME_W3};
 

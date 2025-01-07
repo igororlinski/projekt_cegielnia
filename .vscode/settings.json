@@ -3,6 +3,8 @@
         "brickyard.h": "c",
         "stdio.h": "c",
         "stdlib.h": "c",
-        "signal.h": "c"
+        "signal.h": "c",
+        "types.h": "c",
+        "pthread.h": "c"
     }
 }
