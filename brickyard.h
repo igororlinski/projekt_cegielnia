@@ -13,13 +13,13 @@
 
 #define MAX_CONVEYOR_BRICKS_NUMBER 15
 #define MAX_CONVEYOR_BRICKS_WEIGHT 22
-#define CONVEYOR_TRANSPORT_TIME 15
+#define CONVEYOR_TRANSPORT_TIME 10
 #define WORKER_PICKUP_TIME_W1 1000000
 #define WORKER_PICKUP_TIME_W2 2000000
 #define WORKER_PICKUP_TIME_W3 3000000
-
-extern key_t key_add, key_remove, key_capacity, key_weight;
-extern int semid_add_brick, semid_remove_brick, semid_conveyor_capacity, semid_weight_capacity;
+#define MAX_TRUCK_CAPACITY 80
+#define TRUCK_RETURN_TIME 150
+#define TRUCK_NUMBER 5
 
 typedef struct Brick {
     int id;
@@ -31,8 +31,14 @@ typedef struct ConveyorBelt {
     Brick bricks[MAX_CONVEYOR_BRICKS_NUMBER];
     int front;
     int rear;
-    int lastBrickId;
+    int last_brick_id;
 } ConveyorBelt;
+
+typedef struct Truck {
+    int id;
+    int current_weight;
+    int max_capacity;
+} Truck;
 
 typedef struct Node {
     int workerId;
@@ -48,6 +54,10 @@ typedef struct Queue {
 } Queue;
 
 extern Queue queue;
+extern struct Truck trucks[TRUCK_NUMBER];
+extern key_t key_add, key_remove, key_capacity, key_weight;
+extern int semid_add_brick, semid_remove_brick, semid_conveyor_capacity, semid_weight_capacity;
+extern volatile sig_atomic_t continue_production;
 
 void initializeConveyor(ConveyorBelt* q);
 void addBrick(ConveyorBelt* q, int id, int brick_weight);
@@ -61,4 +71,10 @@ void* chceckQueue(void* arg);
 void initializeQueue(Queue* q);
 void addToQueue(Queue* q, int workerId, int brickWeight);
 Node* removeFromQueue(Queue* q);
+
+void initializeTrucks(int numTrucks);
+void* truckWorker(void* arg);
+Truck assignBrickToTruck(Brick brick);
+void returnTruck(Truck* truck);
+
 #endif

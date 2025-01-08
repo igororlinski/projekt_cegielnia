@@ -1,7 +1,7 @@
 #include "brickyard.h"
-
 volatile sig_atomic_t continue_production = 1;
 Queue queue;
+Truck trucks[TRUCK_NUMBER];
 
 void signalHandler(int sig) {
     (void)sig;
@@ -27,6 +27,13 @@ int main() {
     }
 
     initializeConveyor(conveyor);
+
+    initializeTrucks(TRUCK_NUMBER);
+
+    pthread_t truck_threads[TRUCK_NUMBER];
+    for (int i = 0; i < TRUCK_NUMBER; i++) {
+        pthread_create(&truck_threads[i], NULL, truckWorker, &trucks[i]);
+    }
 
     initializeQueue(&queue);
     pthread_t queue_checking_thread;
@@ -57,6 +64,11 @@ int main() {
         kill(worker_pids[i], SIGTERM); 
     }
     
+    for (int i = 0; i < TRUCK_NUMBER; i++) {
+        pthread_cancel(truck_threads[i]);
+        pthread_join(truck_threads[i], NULL);
+    }
+
     printf("\nZakończenie programu... Zwolnienie zasobów.\n");
 
     shmdt(conveyor);
