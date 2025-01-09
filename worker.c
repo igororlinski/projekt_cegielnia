@@ -14,19 +14,19 @@ void tryAddingBrick(int workerId, int brickWeight, ConveyorBelt* conveyor) {
         else
             printf("Pracownik P%d czeka na dodanie cegły o wadze %d na taśmę z powodu zapełnienia taśmy.\n", workerId, brickWeight);
 
-        addToQueue(&queue, workerId, brickWeight); 
+        addWorkerToQueue(&worker_queue, workerId, brickWeight); 
     }
     addBrick(conveyor, workerId, brickWeight);
 }
 
-void initializeQueue(Queue* q) {
+void initializeWorkerQueue(WorkerQueue* q) {
     q->front = NULL;
     q->rear = NULL;
     pthread_mutex_init(&q->mutex, NULL);
     pthread_cond_init(&q->cond, NULL);
 }
 
-void addToQueue(Queue* q, int workerId, int brickWeight) {
+void addWorkerToQueue(WorkerQueue* q, int workerId, int brickWeight) {
     Node* newNode = (Node*)malloc(sizeof(Node));
     newNode->workerId = workerId;
     newNode->brickWeight = brickWeight;
@@ -42,14 +42,14 @@ void addToQueue(Queue* q, int workerId, int brickWeight) {
         q->rear = newNode;
     }
 
-     if (semctl(semid_conveyor_capacity, 0, GETVAL) > 0 && semctl(semid_weight_capacity, 0, GETVAL) >= brickWeight) {
+    if (semctl(semid_conveyor_capacity, 0, GETVAL) > 0 && semctl(semid_weight_capacity, 0, GETVAL) >= brickWeight) {
         pthread_cond_signal(&q->cond);
     }
 
     pthread_mutex_unlock(&q->mutex);
 }
 
-Node* removeFromQueue(Queue* q) {
+Node* removeWorkerFromQueue(WorkerQueue* q) {
     pthread_mutex_lock(&q->mutex);
 
     while (q->front == NULL) {
@@ -67,11 +67,11 @@ Node* removeFromQueue(Queue* q) {
     return temp;
 }
 
-void* chceckQueue(void* arg) {
+void* chceckWorkerQueue(void* arg) {
     ConveyorBelt* conveyor = (ConveyorBelt*)arg;
 
     while (1) {
-        Node* node = removeFromQueue(&queue);
+        Node* node = removeWorkerFromQueue(&worker_queue);
 
         if (node == NULL) {
             usleep(1000);
@@ -79,7 +79,7 @@ void* chceckQueue(void* arg) {
         }
 
         while (semctl(semid_conveyor_capacity, 0, GETVAL) <= 0 || semctl(semid_weight_capacity, 0, GETVAL) < node->brickWeight) {
-            addToQueue(&queue, node->workerId, node->brickWeight);
+            addWorkerToQueue(&worker_queue, node->workerId, node->brickWeight);
             free(node);
             usleep(10000);
             continue;
@@ -88,9 +88,9 @@ void* chceckQueue(void* arg) {
         addBrick(conveyor, node->workerId, node->brickWeight);
         free(node);
 
-        pthread_mutex_lock(&queue.mutex);
-        pthread_cond_broadcast(&queue.cond);
-        pthread_mutex_unlock(&queue.mutex);
+        pthread_mutex_lock(&worker_queue.mutex);
+        pthread_cond_broadcast(&worker_queue.cond);
+        pthread_mutex_unlock(&worker_queue.mutex);
 
         usleep(10000);
     }

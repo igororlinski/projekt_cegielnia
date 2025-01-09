@@ -61,14 +61,14 @@ void removeBrick(ConveyorBelt* q) {
     semop(semid_remove_brick, &op, 1);
 
     if (semctl(semid_conveyor_capacity, 0, GETVAL)  == MAX_CONVEYOR_BRICKS_NUMBER) {
-        printf("Taśma jest pusta! Nic do wrzucenia do ciężarówki.\n");
+        printf("Taśma jest pusta!\n");
         op.sem_op = 1;
         semop(semid_remove_brick, &op, 1);
         return;
     }
 
-    Truck assigned_truck = assignBrickToTruck(q->bricks[q->front]);
-    printf("Cegła o wadze %d wpada do ciężarówki nr %d. Zapełnienie ciężarówki: %d/%d. ID cegły: %d\n", q->bricks[q->front].weight, assigned_truck.id, assigned_truck.current_weight, assigned_truck.max_capacity, q->bricks[q->front].id);
+    Truck* assigned_truck = assignBrickToTruck(q->bricks[q->front]);
+    printf("Cegła o wadze %d wpada do ciężarówki nr %d. Zapełnienie ciężarówki: %d/%d. ID cegły: %d\n", q->bricks[q->front].weight, assigned_truck->id, assigned_truck->current_weight, assigned_truck->max_capacity, q->bricks[q->front].id);
     q->front = (q->front + 1) % MAX_CONVEYOR_BRICKS_NUMBER;
 
     op.sem_num = 0;
@@ -85,19 +85,7 @@ void removeBrick(ConveyorBelt* q) {
 
 void checkAndUnloadBricks(ConveyorBelt* q) {
     time_t now = time(NULL);
-    while ((semctl(semid_conveyor_capacity, 0, GETVAL) < MAX_CONVEYOR_BRICKS_NUMBER) && (difftime(now, q->bricks[q->front].added_time) >= CONVEYOR_TRANSPORT_TIME)) {
+    if ((semctl(semid_conveyor_capacity, 0, GETVAL) < MAX_CONVEYOR_BRICKS_NUMBER) && (difftime(now, q->bricks[q->front].added_time) >= CONVEYOR_TRANSPORT_TIME)) {
         removeBrick(q);
     }
 }
-
-void* monitorConveyor(void* arg) {
-    ConveyorBelt* q = (ConveyorBelt*)arg;
-
-    while (1) {
-        checkAndUnloadBricks(q);
-        usleep(10000);
-    }
-
-    return NULL;
-}
-
