@@ -12,21 +12,21 @@
 #include <sys/sem.h>
 #include <sys/msg.h>
 
-
+#define SLEEP_TIME 1
 #define MAX_CONVEYOR_BRICKS_NUMBER 15
 #define MAX_CONVEYOR_BRICKS_WEIGHT 22
-#define CONVEYOR_TRANSPORT_TIME 2
-#define WORKER_PICKUP_TIME_W1 1000000
-#define WORKER_PICKUP_TIME_W2 1000000
-#define WORKER_PICKUP_TIME_W3 1000000
+#define CONVEYOR_TRANSPORT_TIME 50
+#define WORKER_PICKUP_TIME_W1 10
+#define WORKER_PICKUP_TIME_W2 20
+#define WORKER_PICKUP_TIME_W3 30
 #define MAX_TRUCK_CAPACITY 20
-#define TRUCK_RETURN_TIME 1
+#define TRUCK_RETURN_TIME 100
 #define TRUCK_NUMBER 5
 
 typedef struct Brick {
     int id;
     int weight;
-    time_t added_time;
+    clock_t added_time;
 } Brick;
 
 typedef struct ConveyorBelt {
@@ -70,16 +70,17 @@ typedef struct TruckQueue {
     pthread_cond_t cond;
 } TruckQueue;
 
-extern WorkerQueue worker_queue;
-extern struct Truck sharedTrucks[TRUCK_NUMBER];
+
 extern key_t key_add, key_remove, key_capacity, key_weight;
 extern int semid_add_brick, semid_remove_brick, semid_conveyor_capacity, semid_weight_capacity;
 extern volatile sig_atomic_t continue_production;
+extern WorkerQueue worker_queue;
+extern Truck sharedTrucks[TRUCK_NUMBER];
 extern TruckQueue* truck_queue;
 
 void initializeConveyor(ConveyorBelt* q);
 void addBrick(ConveyorBelt* q, int id, int brick_weight);
-void checkAndUnloadBricks(ConveyorBelt* q);
+void conveyorCheckAndUnloadBricks(ConveyorBelt* q);
 
 void worker(int workerId, ConveyorBelt* conveyor, const int* worker_pickup_times);
 void tryAddingBrick(int workerId, int brickWeight, ConveyorBelt* conveyor);

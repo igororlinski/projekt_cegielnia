@@ -4,7 +4,7 @@ void initializeTrucks(Truck* sharedTrucks, int numTrucks) {
     pthread_mutexattr_t attr;
     pthread_mutexattr_init(&attr);
     pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
-    
+
     for (int i = 0; i < numTrucks; i++) {
         sharedTrucks[i].id = i + 1;
         sharedTrucks[i].current_weight = 0;
@@ -111,7 +111,7 @@ void sendTruck(Truck* truck) {
     removeTruckFromQueue(truck_queue, truck); 
     printf("Ciężarówka nr %d odjeżdża z %d jednostkami cegieł.\n", truck->id, truck->current_weight);
 
-    sleep(TRUCK_RETURN_TIME);
+    usleep(TRUCK_RETURN_TIME);
 
     printf("Ciężarówka nr %d wróciła do fabryki.\n", truck->id);
     truck->current_weight = 0;

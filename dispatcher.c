@@ -15,7 +15,7 @@ void* dispatcher(ConveyorBelt* conveyor) {
 
         pthread_mutex_unlock(&truck_queue->front->mutex);   
         
-        usleep(1000);
+        usleep(SLEEP_TIME);
     }
     return NULL;
 }

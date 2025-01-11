@@ -43,7 +43,7 @@ void addBrick(ConveyorBelt* q, int workerId, int brick_weight) {
     q->last_brick_id++;
     q->rear = (q->rear + 1) % MAX_CONVEYOR_BRICKS_NUMBER;
     q->bricks[q->rear].id = q->last_brick_id;
-    q->bricks[q->rear].added_time = time(NULL);
+    q->bricks[q->rear].added_time = clock();
     q->bricks[q->rear].weight = brick_weight;
 
     printf("Pracownik P%d dodał cegłę o wadze %d na taśmę. ID cegły: %d        Liczba cegieł na taśmie: %d      Łączna waga cegieł na taśmie: %d\n", workerId, brick_weight, q->last_brick_id, MAX_CONVEYOR_BRICKS_NUMBER - semctl(semid_conveyor_capacity, 0, GETVAL), MAX_CONVEYOR_BRICKS_WEIGHT - semctl(semid_weight_capacity, 0, GETVAL));
@@ -83,9 +83,9 @@ void removeBrick(ConveyorBelt* q) {
     semop(semid_remove_brick, &op, 1);
 }
 
-void checkAndUnloadBricks(ConveyorBelt* q) {
-    time_t now = time(NULL);
-    if ((semctl(semid_conveyor_capacity, 0, GETVAL) < MAX_CONVEYOR_BRICKS_NUMBER) && (difftime(now, q->bricks[q->front].added_time) >= CONVEYOR_TRANSPORT_TIME)) {
+void conveyorCheckAndUnloadBricks(ConveyorBelt* q) {
+    clock_t now = clock();
+    if ((semctl(semid_conveyor_capacity, 0, GETVAL) < MAX_CONVEYOR_BRICKS_NUMBER) && (((double)(now - q->bricks[q->front].added_time) / CLOCKS_PER_SEC) * 1000 >= CONVEYOR_TRANSPORT_TIME)) {
         removeBrick(q);
     }
 }

@@ -74,14 +74,14 @@ void* chceckWorkerQueue(void* arg) {
         Node* node = removeWorkerFromQueue(&worker_queue);
 
         if (node == NULL) {
-            usleep(1000);
+            usleep(SLEEP_TIME);
             continue;
         }
 
         while (semctl(semid_conveyor_capacity, 0, GETVAL) <= 0 || semctl(semid_weight_capacity, 0, GETVAL) < node->brickWeight) {
             addWorkerToQueue(&worker_queue, node->workerId, node->brickWeight);
             free(node);
-            usleep(10000);
+            usleep(10*SLEEP_TIME);
             continue;
         }
 
@@ -92,7 +92,8 @@ void* chceckWorkerQueue(void* arg) {
         pthread_cond_broadcast(&worker_queue.cond);
         pthread_mutex_unlock(&worker_queue.mutex);
 
-        usleep(10000);
+        
+        usleep(10*SLEEP_TIME);
     }
 
     return NULL;

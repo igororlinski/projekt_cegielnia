@@ -76,21 +76,21 @@ int main() {
 
     pid_t worker_pids[3];
     for (int i = 0; i < 3; i++) {
-        pid_t pid = fork();
-        if (pid < 0) {
-            perror("fork error");
+        pid_t worker_pid = fork();
+        if (worker_pid < 0) {
+            perror("Błąd");
             exit(1);
-        } else if (pid == 0) {
+        } else if (worker_pid == 0) {
             worker(i + 1, conveyor, worker_pickup_times);
             exit(0);
         } else {
-            worker_pids[i] = pid;
+            worker_pids[i] = worker_pid;
         }
     }
 
     while (continue_production) {
-        checkAndUnloadBricks(conveyor);
-        usleep(10000);
+        conveyorCheckAndUnloadBricks(conveyor);
+        usleep(10*SLEEP_TIME);
     }
 
     for (int i = 0; i < 3; i++) {
