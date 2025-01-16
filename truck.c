@@ -36,30 +36,35 @@ void initializeTruckQueue(TruckQueue* truck_queue) {
     pthread_condattr_destroy(&cond_attr);
 }
 
-void* truckWorker(void* arg) {
-    Truck* this_truck = (Truck*)arg;
+void truckProcess(Truck* this_truck) {
     struct MsgBuffer msg;
 
-    while (1) {
-        msgrcv(this_truck->msg_queue_id, &msg, sizeof(msg), this_truck->id, 0);
-
-        pthread_mutex_lock(&this_truck->mutex);
-        if (this_truck->current_weight == this_truck->max_capacity || msg.msg_data == 1) {
-            sendTruck(this_truck);
+    while (continue_production) {
+        if (msgrcv(this_truck->msg_queue_id, &msg, sizeof(msg), this_truck->id, 0) < 0) {
+            if (errno == EINTR) {
+                break;
+            }
+            perror("msgrcv error");
+            break;
         }
 
+        pthread_mutex_lock(&this_truck->mutex);
+        if (this_truck->current_weight >= this_truck->max_capacity || msg.msg_data == 1) {
+            sendTruck(this_truck);
+        }
         pthread_mutex_unlock(&this_truck->mutex);
     }
-
-    return NULL;
 }
 
-Truck* assignBrickToTruck(Brick brick) {
+Truck* assignBrickToTruck(Brick* brick) {
+    pthread_mutex_lock(&truck_queue->mutex);
     pthread_mutex_lock(&truck_queue->front->mutex);
 
-    truck_queue->front->current_weight += brick.weight;
+    truck_queue->front->current_weight += getBrickWeight(brick);
+    free(brick->weight);
 
     pthread_mutex_unlock(&truck_queue->front->mutex);
+    pthread_mutex_lock(&truck_queue->mutex);
     return truck_queue->front;
 }
 
@@ -111,7 +116,7 @@ void sendTruck(Truck* truck) {
     removeTruckFromQueue(truck_queue, truck); 
     printf("Ciężarówka nr %d odjeżdża z %d jednostkami cegieł.\n", truck->id, truck->current_weight);
 
-    usleep(TRUCK_RETURN_TIME);
+    usleep(TRUCK_RETURN_TIME*SLEEP_TIME);
 
     printf("Ciężarówka nr %d wróciła do fabryki.\n", truck->id);
     truck->current_weight = 0;

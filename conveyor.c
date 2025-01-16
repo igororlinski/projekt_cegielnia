@@ -24,9 +24,9 @@ void initializeConveyor(ConveyorBelt* q) {
     semctl(semid_weight_capacity, 0, SETVAL, MAX_CONVEYOR_BRICKS_WEIGHT);
 }
 
-void addBrick(ConveyorBelt* q, int workerId, int brick_weight) {
+void addBrick(ConveyorBelt* q, int workerId, Brick* brick) {
     struct sembuf op;
- 
+
     op.sem_num = 0;
     op.sem_op = -1;
     op.sem_flg = 0;
@@ -37,16 +37,13 @@ void addBrick(ConveyorBelt* q, int workerId, int brick_weight) {
     semop(semid_conveyor_capacity, &op, 1); 
 
     op.sem_num = 0;
-    op.sem_op = -brick_weight;
+    op.sem_op = -getBrickWeight(brick);
     semop(semid_weight_capacity, &op, 1); 
     
-    q->last_brick_id++;
     q->rear = (q->rear + 1) % MAX_CONVEYOR_BRICKS_NUMBER;
-    q->bricks[q->rear].id = q->last_brick_id;
-    q->bricks[q->rear].added_time = clock();
-    q->bricks[q->rear].weight = brick_weight;
-
-    printf("Pracownik P%d dodał cegłę o wadze %d na taśmę. ID cegły: %d        Liczba cegieł na taśmie: %d      Łączna waga cegieł na taśmie: %d\n", workerId, brick_weight, q->last_brick_id, MAX_CONVEYOR_BRICKS_NUMBER - semctl(semid_conveyor_capacity, 0, GETVAL), MAX_CONVEYOR_BRICKS_WEIGHT - semctl(semid_weight_capacity, 0, GETVAL));
+    q->bricks[q->rear] = brick;
+    q->bricks[q->rear]->added_time = clock();
+    printf("Pracownik P%d dodał cegłę o wadze %d na taśmę. ID cegły: %d        Liczba cegieł na taśmie: %d      Łączna waga cegieł na taśmie: %d\n", workerId, getBrickWeight(brick), brick->id, MAX_CONVEYOR_BRICKS_NUMBER - semctl(semid_conveyor_capacity, 0, GETVAL), MAX_CONVEYOR_BRICKS_WEIGHT - semctl(semid_weight_capacity, 0, GETVAL));
     
     op.sem_op = 1;
     semop(semid_add_brick, &op, 1);
@@ -67,8 +64,12 @@ void removeBrick(ConveyorBelt* q) {
         return;
     }
 
+    Brick* removed_brick = q->bricks[q->front];
+    int brick_weight = getBrickWeight(removed_brick);
+    int brick_id = removed_brick->id;
+
     Truck* assigned_truck = assignBrickToTruck(q->bricks[q->front]);
-    printf("Cegła o wadze %d wpada do ciężarówki nr %d. Zapełnienie ciężarówki: %d/%d. ID cegły: %d\n", q->bricks[q->front].weight, assigned_truck->id, assigned_truck->current_weight, assigned_truck->max_capacity, q->bricks[q->front].id);
+    printf("Cegła o wadze %d wpada do ciężarówki nr %d. Zapełnienie ciężarówki: %d/%d. ID cegły: %d\n", brick_weight, assigned_truck->id, assigned_truck->current_weight, assigned_truck->max_capacity, brick_id);
     q->front = (q->front + 1) % MAX_CONVEYOR_BRICKS_NUMBER;
 
     op.sem_num = 0;
@@ -76,7 +77,7 @@ void removeBrick(ConveyorBelt* q) {
     semop(semid_conveyor_capacity, &op, 1);
 
     op.sem_num = 0;
-    op.sem_op = q->bricks[q->front].weight;
+    op.sem_op = brick_weight;
     semop(semid_weight_capacity, &op, 1);
 
     op.sem_op = 1;
@@ -85,7 +86,7 @@ void removeBrick(ConveyorBelt* q) {
 
 void conveyorCheckAndUnloadBricks(ConveyorBelt* q) {
     clock_t now = clock();
-    if ((semctl(semid_conveyor_capacity, 0, GETVAL) < MAX_CONVEYOR_BRICKS_NUMBER) && (((double)(now - q->bricks[q->front].added_time) / CLOCKS_PER_SEC) * 1000 >= CONVEYOR_TRANSPORT_TIME)) {
+    if ((semctl(semid_conveyor_capacity, 0, GETVAL) < MAX_CONVEYOR_BRICKS_NUMBER) && (((double)(now - q->bricks[q->front]->added_time) / CLOCKS_PER_SEC) * 1000000 >= (CONVEYOR_TRANSPORT_TIME * SLEEP_TIME))) {
         removeBrick(q);
     }
 }

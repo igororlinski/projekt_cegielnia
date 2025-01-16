@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c99 -D_XOPEN_SOURCE=500
+CFLAGS = -Wall -Wextra -std=c99 -D_XOPEN_SOURCE=500 -g -O0
 
 # Pliki źródłowe
 SRCS = conveyor.c dispatcher.c main_brickyard.c truck.c worker.c
