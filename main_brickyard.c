@@ -4,6 +4,7 @@ WorkerQueue worker_queue;
 Truck sharedTrucks[TRUCK_NUMBER];
 TruckQueue* truck_queue;
 ConveyorBelt* conveyor;
+char *brick_storage;
 
 void signalHandler(int sig) {
     (void)sig;
@@ -72,17 +73,36 @@ int main() {
         }
     }
 
+    int brick_storage_id = shmget(IPC_PRIVATE, BRICK_STORAGE_SIZE, IPC_CREAT | 0600);
+    if (brick_storage_id < 0) {
+        perror("shmget error");
+        exit(1);
+    }
+
+    brick_storage = shmat(brick_storage_id, NULL, 0);
+    if (brick_storage == (void*)-1) {
+       perror("shmat error");
+      exit(1);
+    }
+
+    for (int i = 0; i < BRICK_STORAGE_SIZE; i++) {
+        brick_storage[i] = '1';
+    }
+
     initializeWorkerQueue(&worker_queue);
     pthread_t queue_checking_thread;
-    pthread_create(&queue_checking_thread, NULL, chceckWorkerQueue, (void*)&conveyor);
-
+    pthread_create(&queue_checking_thread, NULL, checkWorkerQueue, (void*)&conveyor);
+    //pthread_setname_np(queue_checking_thread, "CheckWorkerQueue");
+/*
     pid_t dispatcher_pid = fork();
     if (dispatcher_pid == 0) {
         dispatcher(conveyor);
         _exit(0);
     }
-
+*/
     const int worker_pickup_times[3] = {WORKER_PICKUP_TIME_W1*SLEEP_TIME, WORKER_PICKUP_TIME_W2*SLEEP_TIME, WORKER_PICKUP_TIME_W3*SLEEP_TIME};
+    int worker_lower_limits[3] = {(5*BRICK_STORAGE_SIZE)/6, 0.5*BRICK_STORAGE_SIZE, 0};
+    int worker_upper_limits[3] ={BRICK_STORAGE_SIZE, (5*BRICK_STORAGE_SIZE)/6, 0.5*BRICK_STORAGE_SIZE};
 
     pid_t worker_pids[3];
     for (int i = 0; i < 3; i++) {
@@ -91,7 +111,7 @@ int main() {
             perror("Błąd");
             exit(1);
         } else if (worker_pid == 0) {
-            worker(i + 1, conveyor, worker_pickup_times);
+            worker(i + 1, conveyor, worker_pickup_times, worker_lower_limits[i], worker_upper_limits[i]);
             _exit(0);
         } else {
             worker_pids[i] = worker_pid;
@@ -100,7 +120,7 @@ int main() {
 
     while (continue_production) {
         conveyorCheckAndUnloadBricks(conveyor);
-        usleep(10*SLEEP_TIME);
+        usleep(SLEEP_TIME/10);
     }
 
     for (int i = 0; i < 3; i++) {
@@ -129,6 +149,9 @@ int main() {
 
     shmdt(conveyor);
     shmctl(shmId, IPC_RMID, NULL);
+
+    shmdt(brick_storage);
+    shmctl(brick_storage_id, IPC_RMID, NULL);
 
     shmdt(truck_queue);
     shmctl(truck_queue_id, IPC_RMID, NULL);

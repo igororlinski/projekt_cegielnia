@@ -8,7 +8,6 @@ void* dispatcher(ConveyorBelt* conveyor) {
 
         if (truck_queue->front == NULL) {
             pthread_mutex_unlock(&truck_queue->mutex);
-            usleep(SLEEP_TIME);
             continue;
         }
 
@@ -16,7 +15,7 @@ void* dispatcher(ConveyorBelt* conveyor) {
         pthread_mutex_lock(&frontTruck->mutex);
         pthread_mutex_unlock(&truck_queue->mutex);
         
-        if (getBrickWeight(conveyor->bricks[conveyor->front]) > (frontTruck->max_capacity - frontTruck->current_weight)) {
+        if (getBrickWeight(&conveyor->bricks[conveyor->front]) > (frontTruck->max_capacity - frontTruck->current_weight)) {
             msg.mtype = truck_queue->front->id;
             msg.msg_data = 1;
 
@@ -24,8 +23,6 @@ void* dispatcher(ConveyorBelt* conveyor) {
         }
 
         pthread_mutex_unlock(&frontTruck->mutex);   
-        
-        usleep(SLEEP_TIME);
     }
     return NULL;
 }

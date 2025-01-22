@@ -59,12 +59,14 @@ void truckProcess(Truck* this_truck) {
 Truck* assignBrickToTruck(Brick* brick) {
     pthread_mutex_lock(&truck_queue->mutex);
     pthread_mutex_lock(&truck_queue->front->mutex);
-
+    
+    printf("Weight: %d\n", getBrickWeight(brick));
+    printf("ID: %d\n", brick->id);
     truck_queue->front->current_weight += getBrickWeight(brick);
-    free(brick->weight);
-
+    printf("eoe\n");
+    
     pthread_mutex_unlock(&truck_queue->front->mutex);
-    pthread_mutex_lock(&truck_queue->mutex);
+    pthread_mutex_unlock(&truck_queue->mutex);
     return truck_queue->front;
 }
 

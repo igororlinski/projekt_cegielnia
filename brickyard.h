@@ -2,7 +2,7 @@
 #define BRICKYARD_H
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
+#include <sys/time.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <string.h>
@@ -23,6 +23,8 @@
 #define WORKER_PICKUP_TIME_W3 30
 #define TRUCK_RETURN_TIME 100
 
+#define BRICK_STORAGE_SIZE 90
+#define MAX_BRICK_SIZE 3
 #define MAX_CONVEYOR_BRICKS_NUMBER 15
 #define MAX_CONVEYOR_BRICKS_WEIGHT 22
 #define MAX_TRUCK_CAPACITY 20
@@ -30,15 +32,17 @@
 
 typedef struct Brick {
     int id;
-    void* weight;
-    clock_t added_time;
+    char weight[MAX_BRICK_SIZE];
+    struct timeval added_time;
+    clock_t ad;
 } Brick;
 
 typedef struct ConveyorBelt {
-    Brick* bricks[MAX_CONVEYOR_BRICKS_NUMBER];
+    Brick bricks[MAX_CONVEYOR_BRICKS_NUMBER];
     int front;
     int rear;
     int last_brick_id;
+    pthread_mutex_t mutex;
 } ConveyorBelt;
 
 typedef struct Truck {
@@ -75,6 +79,9 @@ typedef struct TruckQueue {
     pthread_cond_t cond;
 } TruckQueue;
 
+extern struct sembuf p;
+extern struct sembuf v;
+
 extern ConveyorBelt* conveyor;
 extern key_t key_add, key_remove, key_capacity, key_weight;
 extern int semid_add_brick, semid_remove_brick, semid_conveyor_capacity, semid_weight_capacity;
@@ -82,14 +89,15 @@ extern volatile sig_atomic_t continue_production;
 extern WorkerQueue worker_queue;
 extern Truck sharedTrucks[TRUCK_NUMBER];
 extern TruckQueue* truck_queue;
+extern char *brick_storage;
 
 void initializeConveyor(ConveyorBelt* q);
 void addBrick(ConveyorBelt* q, int id, Brick* brick);
 void conveyorCheckAndUnloadBricks(ConveyorBelt* q);
 
-void worker(int workerId, ConveyorBelt* conveyor, const int* worker_pickup_times);
-void tryAddingBrick(Brick* brick, int workerId, ConveyorBelt* conveyor);
-void* chceckWorkerQueue(void* arg);
+void worker(int workerId, ConveyorBelt* conveyor, const int* worker_pickup_times, int lower_limit, int upper_limit);
+int tryAddingBrick(int workerId, ConveyorBelt* conveyor, char* storage, int lower_limit);
+void* checkWorkerQueue(void* arg);
 void initializeWorkerQueue(WorkerQueue* q);
 void addWorkerToQueue(WorkerQueue* q, int workerId, Brick* brick);
 Node* removeWorkerFromQueue(WorkerQueue* q);
@@ -103,6 +111,6 @@ Truck* removeTruckFromQueue(TruckQueue* q, Truck* truck);
 void initializeTruckQueue(TruckQueue* q);
 void sendTruck(Truck* truck);
 
-void* dispatcher(ConveyorBelt* conveyor);
+//void* dispatcher(ConveyorBelt* conveyor);
 
 #endif
