@@ -1,20 +1,30 @@
 #include "brickyard.h"
 volatile sig_atomic_t continue_production = 1;
-WorkerQueue worker_queue;
 Truck sharedTrucks[TRUCK_NUMBER];
 TruckQueue* truck_queue;
 ConveyorBelt* conveyor;
 char *brick_storage;
 
 void signalHandler(int sig) {
-    (void)sig;
-    continue_production = 0;
+    switch(sig) {
+        case SIGINT:
+            continue_production = 0;
+            break;
+        //case SIGUSR1:
+          //  sendTruck(this_truck);
+            //break;
+    }
 }
 
 int main() {
     if (signal(SIGINT, signalHandler) == SIG_ERR) {
         perror("Nie udało się zarejestrować obsługi sygnału");
         exit(1);
+    }
+
+    if (signal(SIGUSR1, signalHandler) == SIG_ERR) {
+    perror("Nie udało się zarejestrować obsługi sygnału");
+    exit(1);
     }
 
     int shmId = shmget(IPC_PRIVATE, sizeof(ConveyorBelt), IPC_CREAT | 0600);
@@ -69,6 +79,7 @@ int main() {
             _exit(0);
         } else {
             truck_pids[i] = pid;
+            sharedTrucks[i].pid = pid;
             addTruckToQueue(truck_queue, &sharedTrucks[i]);
         }
     }
@@ -89,17 +100,12 @@ int main() {
         brick_storage[i] = '1';
     }
 
-    initializeWorkerQueue(&worker_queue);
-    pthread_t queue_checking_thread;
-    pthread_create(&queue_checking_thread, NULL, checkWorkerQueue, (void*)&conveyor);
-    //pthread_setname_np(queue_checking_thread, "CheckWorkerQueue");
-/*
     pid_t dispatcher_pid = fork();
     if (dispatcher_pid == 0) {
         dispatcher(conveyor);
         _exit(0);
     }
-*/
+
     const int worker_pickup_times[3] = {WORKER_PICKUP_TIME_W1*SLEEP_TIME, WORKER_PICKUP_TIME_W2*SLEEP_TIME, WORKER_PICKUP_TIME_W3*SLEEP_TIME};
     int worker_lower_limits[3] = {(5*BRICK_STORAGE_SIZE)/6, 0.5*BRICK_STORAGE_SIZE, 0};
     int worker_upper_limits[3] ={BRICK_STORAGE_SIZE, (5*BRICK_STORAGE_SIZE)/6, 0.5*BRICK_STORAGE_SIZE};
@@ -128,16 +134,13 @@ int main() {
         waitpid(worker_pids[i], NULL, 0);
     }
     
-    //kill(dispatcher_pid, SIGTERM);
-    //waitpid(dispatcher_pid, NULL, 0);
+    kill(dispatcher_pid, SIGTERM);
+    waitpid(dispatcher_pid, NULL, 0);
 
     for (int i = 0; i < TRUCK_NUMBER; i++) {
         kill(truck_pids[i], SIGTERM);
         waitpid(truck_pids[i], NULL, 0);
     }
-
-    pthread_cancel(queue_checking_thread);
-    pthread_join(queue_checking_thread, NULL);
     
     for (int i = 0; i < TRUCK_NUMBER; i++) {
     pthread_mutex_destroy(&sharedTrucks[i].mutex);

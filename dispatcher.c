@@ -1,8 +1,6 @@
 #include "brickyard.h"
 
 void* dispatcher(ConveyorBelt* conveyor) {  
-    struct MsgBuffer msg;
-
     while (continue_production) {
         pthread_mutex_lock(&truck_queue->mutex);
 
@@ -14,15 +12,16 @@ void* dispatcher(ConveyorBelt* conveyor) {
         Truck* frontTruck = truck_queue->front;
         pthread_mutex_lock(&frontTruck->mutex);
         pthread_mutex_unlock(&truck_queue->mutex);
-        
-        if (getBrickWeight(&conveyor->bricks[conveyor->front]) > (frontTruck->max_capacity - frontTruck->current_weight)) {
-            msg.mtype = truck_queue->front->id;
-            msg.msg_data = 1;
+        //pthread_mutex_lock(&conveyor->mutex);
 
-            msgsnd(truck_queue->front->msg_queue_id, &msg, sizeof(msg), 0);
+        if (!frontTruck->in_transit && getBrickWeight(&conveyor->bricks[conveyor->front]) > (frontTruck->max_capacity - frontTruck->current_weight)) { 
+            frontTruck->in_transit = 1;
+            kill(frontTruck->pid, SIGUSR1); 
         }
 
-        pthread_mutex_unlock(&frontTruck->mutex);   
+        //pthread_mutex_unlock(&conveyor->mutex);
+        pthread_mutex_unlock(&frontTruck->mutex);  
+        //usleep(1000); 
     }
     return NULL;
 }

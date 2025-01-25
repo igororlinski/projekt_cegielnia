@@ -57,9 +57,17 @@ void removeBrick(ConveyorBelt* q) {
 
     int brick_weight = getBrickWeight(&q->bricks[q->front]);
     int brick_id = q->bricks[q->front].id;
-
-    printf("ID: %d, Waga: %d\n", brick_id, brick_weight);
-    Truck* assigned_truck = assignBrickToTruck(&q->bricks[q->front]);
+    Truck* assigned_truck;
+    
+    while (1) {
+    if ((truck_queue->front->max_capacity - truck_queue->front->current_weight) < brick_weight) {
+        continue;
+    }
+    else {
+        assigned_truck = assignBrickToTruck(&q->bricks[q->front]);
+        break;
+    }
+    }
     printf("Cegła o wadze %d wpada do ciężarówki nr %d. Zapełnienie ciężarówki: %d/%d. ID cegły: %d\n", brick_weight, assigned_truck->id, assigned_truck->current_weight, assigned_truck->max_capacity, brick_id);
     q->front = (q->front + 1) % MAX_CONVEYOR_BRICKS_NUMBER;
     pthread_mutex_unlock(&q->mutex);
@@ -87,7 +95,6 @@ void conveyorCheckAndUnloadBricks(ConveyorBelt* q) {
     pthread_mutex_unlock(&q->mutex);
 
     if ((semctl(semid_conveyor_capacity, 0, GETVAL) < MAX_CONVEYOR_BRICKS_NUMBER) && (time_taken >= (double)(CONVEYOR_TRANSPORT_TIME * SLEEP_TIME)/1000000)) {
-        printf("ID: %d, Waga: %d\n", front_brick->id, getBrickWeight(front_brick));
         removeBrick(q);
     }
 }

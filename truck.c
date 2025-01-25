@@ -1,3 +1,6 @@
+#define _POSIX_C_SOURCE 199309L
+#include <unistd.h>
+#include <signal.h>
 #include "brickyard.h"
 
 void initializeTrucks(Truck* sharedTrucks, int numTrucks) {
@@ -9,7 +12,7 @@ void initializeTrucks(Truck* sharedTrucks, int numTrucks) {
         sharedTrucks[i].id = i + 1;
         sharedTrucks[i].current_weight = 0;
         sharedTrucks[i].max_capacity = MAX_TRUCK_CAPACITY;
-        sharedTrucks[i].msg_queue_id = msgget(IPC_PRIVATE, 0600 | IPC_CREAT);
+        sharedTrucks[i].in_transit = 0;
         pthread_mutex_init(&sharedTrucks[i].mutex, &attr);
         sharedTrucks[i].next = NULL;
     }
@@ -36,34 +39,47 @@ void initializeTruckQueue(TruckQueue* truck_queue) {
     pthread_condattr_destroy(&cond_attr);
 }
 
-void truckProcess(Truck* this_truck) {
-    struct MsgBuffer msg;
+static Truck *sent_truck = NULL;
 
-    while (continue_production) {
-        if (msgrcv(this_truck->msg_queue_id, &msg, sizeof(msg), this_truck->id, 0) < 0) {
-            if (errno == EINTR) {
-                break;
-            }
-            perror("msgrcv error");
+void truckSignalHandler(int sig) {
+    switch(sig) {
+        case SIGUSR1:
+            sendTruck(sent_truck); 
             break;
-        }
+    }
+}
 
+void truckProcess(Truck* this_truck) {
+    sent_truck = this_truck;
+    struct sigaction sa;
+    sa.sa_handler = truckSignalHandler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+
+    if (sigaction(SIGUSR1, &sa, NULL) == -1) {
+        perror("sigaction error");
+        exit(1);
+    }
+    
+    while (continue_production) {
         pthread_mutex_lock(&this_truck->mutex);
-        if (this_truck->current_weight >= this_truck->max_capacity || msg.msg_data == 1) {
-            sendTruck(this_truck);
+
+        if (this_truck->current_weight == this_truck->max_capacity) {
+            this_truck->in_transit = 1;
+            pthread_mutex_unlock(&this_truck->mutex);
+            kill(getpid(), SIGUSR1);
         }
-        pthread_mutex_unlock(&this_truck->mutex);
+        else {
+            pthread_mutex_unlock(&this_truck->mutex);
+        }
     }
 }
 
 Truck* assignBrickToTruck(Brick* brick) {
     pthread_mutex_lock(&truck_queue->mutex);
     pthread_mutex_lock(&truck_queue->front->mutex);
-    
-    printf("Weight: %d\n", getBrickWeight(brick));
-    printf("ID: %d\n", brick->id);
+
     truck_queue->front->current_weight += getBrickWeight(brick);
-    printf("eoe\n");
     
     pthread_mutex_unlock(&truck_queue->front->mutex);
     pthread_mutex_unlock(&truck_queue->mutex);
@@ -122,5 +138,6 @@ void sendTruck(Truck* truck) {
 
     printf("Ciężarówka nr %d wróciła do fabryki.\n", truck->id);
     truck->current_weight = 0;
+    truck->in_transit = 0;
     addTruckToQueue(truck_queue, truck);
 }
