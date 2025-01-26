@@ -46,11 +46,24 @@ int tryAddingBrick(int workerId, ConveyorBelt* conveyor, char* storage, int lowe
     return lower_limit;
 }
 
-void worker(int workerId, ConveyorBelt* conveyor, const int* worker_pickup_times, int lower_limit, int upper_limit) {
+void worker(int workerId, ConveyorBelt* conveyor, int lower_limit, int upper_limit) {
+    int random_time;
     while (1) {
-        usleep(worker_pickup_times[workerId-1]);
+        srand(time(NULL) + getpid());
+        random_time = WORKER_MIN_TIME + rand() % (SLEEP_TIME - WORKER_MIN_TIME + 1);
+        printf("Czas %d - %d\n", workerId, random_time);
+        //usleep(random_time);
         if (upper_limit - lower_limit < workerId) {
             printf("Pracownik %d załadował wszystkie dostępne cegły i kończy pracę.\n", workerId);
+
+            struct MsgBuffer msg;
+            msg.mtype = 1;
+            msg.workerId = workerId;
+
+            if (msgsnd(msg_queue_id, &msg, sizeof(int), 0) == -1) {
+                perror("Nie udało się wysłać wiadomości");
+            }
+            
             break;
         }
         lower_limit = tryAddingBrick(workerId, conveyor, brick_storage, lower_limit);

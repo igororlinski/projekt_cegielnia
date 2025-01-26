@@ -18,9 +18,7 @@
 
 #define SLEEP_TIME 0
 #define CONVEYOR_TRANSPORT_TIME 5
-#define WORKER_PICKUP_TIME_W1 1
-#define WORKER_PICKUP_TIME_W2 2
-#define WORKER_PICKUP_TIME_W3 3
+#define WORKER_MIN_TIME 10000
 #define TRUCK_RETURN_TIME 100
 
 #define BRICK_STORAGE_SIZE 90
@@ -45,6 +43,11 @@ typedef struct ConveyorBelt {
     pthread_mutex_t mutex;
 } ConveyorBelt;
 
+struct MsgBuffer {
+    long mtype;
+    int workerId;
+};
+
 typedef struct Truck {
     int id;
     int current_weight;
@@ -54,11 +57,6 @@ typedef struct Truck {
     pthread_mutex_t mutex;
     struct Truck* next;
 } Truck;
-
-struct MsgBuffer {
-    long mtype;
-    int msg_data;
-};
 
 typedef struct TruckQueue {
     Truck* front;
@@ -71,19 +69,19 @@ extern struct sembuf p;
 extern struct sembuf v;
 
 extern ConveyorBelt* conveyor;
-extern key_t key_add, key_remove, key_capacity, key_weight;
+extern key_t key_add, key_remove, key_capacity, key_weight, msg_key;
 extern int semid_add_brick, semid_remove_brick, semid_conveyor_capacity, semid_weight_capacity;
 extern volatile sig_atomic_t continue_production;
 extern Truck sharedTrucks[TRUCK_NUMBER];
 extern TruckQueue* truck_queue;
 extern char *brick_storage;
-
+extern int msg_queue_id;
 void signalHandler(int sig);
 void initializeConveyor(ConveyorBelt* q);
 void addBrick(ConveyorBelt* q, int id, Brick* brick);
 void conveyorCheckAndUnloadBricks(ConveyorBelt* q);
 
-void worker(int workerId, ConveyorBelt* conveyor, const int* worker_pickup_times, int lower_limit, int upper_limit);
+void worker(int workerId, ConveyorBelt* conveyor, int lower_limit, int upper_limit);
 int tryAddingBrick(int workerId, ConveyorBelt* conveyor, char* storage, int lower_limit);
 int getBrickWeight(Brick* brick);
 

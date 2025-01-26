@@ -58,7 +58,7 @@ void removeBrick(ConveyorBelt* q) {
     int brick_weight = getBrickWeight(&q->bricks[q->front]);
     int brick_id = q->bricks[q->front].id;
     Truck* assigned_truck;
-    
+
     while (1) {
     if ((truck_queue->front->max_capacity - truck_queue->front->current_weight) < brick_weight) {
         continue;
@@ -84,7 +84,7 @@ void removeBrick(ConveyorBelt* q) {
 
 void conveyorCheckAndUnloadBricks(ConveyorBelt* q) {
     pthread_mutex_lock(&q->mutex);
-    if (semctl(semid_conveyor_capacity, 0, GETVAL) == MAX_CONVEYOR_BRICKS_NUMBER) {
+    if (semctl(semid_conveyor_capacity, 0, GETVAL) == MAX_CONVEYOR_BRICKS_NUMBER || truck_queue->front == NULL) {
         pthread_mutex_unlock(&q->mutex);
         return;
     }   

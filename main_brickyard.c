@@ -4,19 +4,45 @@ Truck sharedTrucks[TRUCK_NUMBER];
 TruckQueue* truck_queue;
 ConveyorBelt* conveyor;
 char *brick_storage;
+int msg_queue_id;
+key_t msg_key;
 
 void signalHandler(int sig) {
     switch(sig) {
         case SIGINT:
             continue_production = 0;
             break;
-        //case SIGUSR1:
-          //  sendTruck(this_truck);
-            //break;
+        case SIGUSR2:
+            printf("\033[0;31mOtrzymano!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\033[0m\n");
+            continue_production = 0;
+            break;
     }
 }
 
 int main() {
+    msg_key = ftok(".", 'Q');
+
+    msg_queue_id = msgget(msg_key, IPC_CREAT | 0600);
+    if (msg_queue_id < 0) {
+        perror("Nie udało się utworzyć kolejki komunikatów");
+        exit(1);
+    }
+
+    /*struct msqid_ds buf;
+    if (msgctl(msg_queue_id, IPC_STAT, &buf) == -1) {
+        perror("msgctl error");
+        exit(1);
+    }
+
+    while (buf.msg_qnum > 0) {  // Jeśli są jakieś wiadomości w kolejce
+        struct MsgBuffer msg;
+        msgrcv(msg_queue_id, &msg, sizeof(msg.workerId), 0, IPC_NOWAIT);  // Opróżnij kolejkę
+        if (msgctl(msg_queue_id, IPC_STAT, &buf) == -1) {
+            perror("msgctl error");
+            exit(1);
+        }
+    }*/
+
     if (signal(SIGINT, signalHandler) == SIG_ERR) {
         perror("Nie udało się zarejestrować obsługi sygnału");
         exit(1);
@@ -106,7 +132,6 @@ int main() {
         _exit(0);
     }
 
-    const int worker_pickup_times[3] = {WORKER_PICKUP_TIME_W1*SLEEP_TIME, WORKER_PICKUP_TIME_W2*SLEEP_TIME, WORKER_PICKUP_TIME_W3*SLEEP_TIME};
     int worker_lower_limits[3] = {(5*BRICK_STORAGE_SIZE)/6, 0.5*BRICK_STORAGE_SIZE, 0};
     int worker_upper_limits[3] ={BRICK_STORAGE_SIZE, (5*BRICK_STORAGE_SIZE)/6, 0.5*BRICK_STORAGE_SIZE};
 
@@ -117,7 +142,7 @@ int main() {
             perror("Błąd");
             exit(1);
         } else if (worker_pid == 0) {
-            worker(i + 1, conveyor, worker_pickup_times, worker_lower_limits[i], worker_upper_limits[i]);
+            worker(i + 1, conveyor, worker_lower_limits[i], worker_upper_limits[i]);
             _exit(0);
         } else {
             worker_pids[i] = worker_pid;
@@ -149,6 +174,11 @@ int main() {
     pthread_cond_destroy(&truck_queue->cond);
 
     printf("\nZakończenie programu... Zwolnienie zasobów.\n");
+
+    if (msgctl(msg_queue_id, IPC_RMID, NULL) == -1) {
+    perror("msgctl(IPC_RMID) error");
+    exit(EXIT_FAILURE);
+    }
 
     shmdt(conveyor);
     shmctl(shmId, IPC_RMID, NULL);
