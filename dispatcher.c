@@ -1,24 +1,32 @@
 #include "brickyard.h"
 void* monitorTheProduction(void* arg);
 int isQueueFull(TruckQueue* queue);
+void attach_to_memory(ConveyorBelt** conveyor, TruckQueue** truck_queue, int *msg_queue_id, int *semid_conveyor_capacity, Truck **sharedTrucks);
 
-void* dispatcher(ConveyorBelt* conveyor) {  
+Truck* sharedTrucks;
+ConveyorBelt* conveyor;
+TruckQueue* truck_queue;
+int msg_queue_id;
+int semid_conveyor_capacity;
+
+int main() {  
+    attach_to_memory(&conveyor, &truck_queue, &msg_queue_id, &semid_conveyor_capacity, &sharedTrucks);
     pthread_t monitor_thread;
 
     if (pthread_create(&monitor_thread, NULL, monitorTheProduction, NULL) != 0) {
         perror("Nie udało się utworzyć wątku monitorującego");
-        return NULL;
+        return 1;
     }
 
-    while (continue_production) {
+    while (1) {
         pthread_mutex_lock(&truck_queue->mutex);
 
-        if (truck_queue->front == NULL) {
-            if (truck_queue->rear == NULL) {
+        if (get_truck(truck_queue, truck_queue->front, sharedTrucks) == NULL) {
+            if (get_truck(truck_queue, truck_queue->rear, sharedTrucks) == NULL) {
                 pthread_mutex_lock(&conveyor->mutex);
                 pthread_mutex_unlock(&truck_queue->mutex);
                 printf("Brak ciężarówek w fabryce, taśma zostaje wstrzymana.\n");
-                while (truck_queue->front == NULL && truck_queue->rear == NULL) {
+                while (get_truck(truck_queue, truck_queue->front, sharedTrucks) == NULL && get_truck(truck_queue, truck_queue->rear, sharedTrucks) == NULL) {
                     pthread_cond_wait(&truck_queue->cond, &truck_queue->mutex);
                 }
                 pthread_mutex_unlock(&conveyor->mutex);
@@ -30,30 +38,28 @@ void* dispatcher(ConveyorBelt* conveyor) {
             }
         }
 
-        Truck* frontTruck = truck_queue->front;
-        pthread_mutex_lock(&frontTruck->mutex);
+        Truck* frontTruck = get_truck(truck_queue, truck_queue->front, sharedTrucks);
+        pthread_mutex_lock(&(get_truck(truck_queue, truck_queue->front, sharedTrucks))->mutex);
         pthread_mutex_unlock(&truck_queue->mutex);
-        //pthread_mutex_lock(&conveyor->mutex);
 
         if (!frontTruck->in_transit && getBrickWeight(&conveyor->bricks[conveyor->front]) > (frontTruck->max_capacity - frontTruck->current_weight)) { 
             frontTruck->in_transit = 1;
-            kill(frontTruck->pid, SIGUSR1); 
+            kill(get_truck(truck_queue, truck_queue->front, sharedTrucks)->pid, SIGUSR1); 
         }
 
-        //pthread_mutex_unlock(&conveyor->mutex);
-        pthread_mutex_unlock(&frontTruck->mutex);  
+        pthread_mutex_unlock(&(get_truck(truck_queue, truck_queue->front, sharedTrucks))->mutex);  
         usleep(SLEEP_TIME); 
     }
 
     pthread_cancel(monitor_thread);
     pthread_join(monitor_thread, NULL);
     
-    return NULL;
+    return 1;
 }
 
 void* monitorTheProduction(void* arg) {
     (void)arg;
-    int workers_done = 1;
+    int workers_done = 0;
     int not_all_workers_done = 1;
     while (not_all_workers_done) {
         usleep(SLEEP_TIME);
@@ -66,28 +72,28 @@ void* monitorTheProduction(void* arg) {
             }
         }
     }
-    while (continue_production) {
-    printf("workers %d, semafor %d\n", workers_done, semctl(semid_conveyor_capacity, 0, GETVAL));
-    if (semctl(semid_conveyor_capacity, 0, GETVAL) == MAX_CONVEYOR_BRICKS_NUMBER && truck_queue->front->current_weight > 0) {
-            kill(truck_queue->front->pid, SIGUSR1);
+    while (1) {
+    if (semctl(semid_conveyor_capacity, 0, GETVAL) == MAX_CONVEYOR_BRICKS_NUMBER && get_truck(truck_queue, truck_queue->front, sharedTrucks)->current_weight > 0) {
+            kill(get_truck(truck_queue, truck_queue->front, sharedTrucks)->pid, SIGUSR1); 
             break;
         }
-        else if (semctl(semid_conveyor_capacity, 0, GETVAL) == MAX_CONVEYOR_BRICKS_NUMBER && truck_queue->front->current_weight == 0) {
+        else if (semctl(semid_conveyor_capacity, 0, GETVAL) == MAX_CONVEYOR_BRICKS_NUMBER && get_truck(truck_queue, truck_queue->front, sharedTrucks)->current_weight == 0) {
             break;
-            printf("workers %d, semafor %d, kolejka %d\n", workers_done, semctl(semid_conveyor_capacity, 0, GETVAL), isQueueFull(truck_queue));
         }
     }
-    while(continue_production) {
+    while(1) {
         if (isQueueFull(truck_queue) == 1) {
             kill(getppid(), SIGUSR2);
+            break;
         }
     }
+
     return NULL;
 } 
 
 int isQueueFull(TruckQueue* truck_queue) {
-    pthread_mutex_lock(&truck_queue->mutex);
-    Truck* current = truck_queue->front;
+    pthread_mutex_lock(&(get_truck(truck_queue, truck_queue->front, sharedTrucks))->mutex);
+    Truck* current = get_truck(truck_queue, truck_queue->front, sharedTrucks);
 
     int counted_trucks[TRUCK_NUMBER];
     for (int i = 0; i < TRUCK_NUMBER; i++) {
@@ -99,15 +105,73 @@ int isQueueFull(TruckQueue* truck_queue) {
             break;
         if (counted_trucks[i] == 0) {
             counted_trucks[i] = current->id;
-            current = current->next;
+            current = get_truck(truck_queue, current->next, sharedTrucks);
         }
     }
 
-    pthread_mutex_unlock(&truck_queue->mutex);
+    pthread_mutex_unlock(&(get_truck(truck_queue, truck_queue->front, sharedTrucks))->mutex);
     for (int i = 0; i < TRUCK_NUMBER; i++) {
         if (counted_trucks[i] == 0) {
             return 0;
         }
     }
     return 1;
+}
+
+void attach_to_memory(ConveyorBelt** conveyor, TruckQueue** truck_queue, int *msg_queue_id, int *semid_conveyor_capacity, Truck **sharedTrucks) {
+    key_t msg_key = ftok(".", 'Q');
+    key_t conveyor_key = ftok(".", 'Y');
+    key_t truck_queue_key = ftok (".", 'Z');
+    key_t key_capacity = ftok(".", 'C');
+    key_t shared_trucks_key = ftok(".", 'U');
+
+    int conveyor_shm_id = shmget(conveyor_key, sizeof(ConveyorBelt), 0600);
+    if (conveyor_shm_id < 0) {
+        perror("shmget error");
+        exit(1);
+    }
+
+    *conveyor = (ConveyorBelt*)shmat(conveyor_shm_id, NULL, 0);
+    if (conveyor == (void*)-1) {
+        perror("shmat error");
+        exit(1);
+    }
+
+    int truck_queue_shm_id = shmget(truck_queue_key, sizeof(TruckQueue), 0600);
+    if (truck_queue_shm_id < 0) {
+        perror("shmget error");
+        exit(1);
+    }
+
+    *truck_queue = (TruckQueue*)shmat(truck_queue_shm_id, NULL, 0);
+    if (truck_queue == (void*)-1) {
+        perror("shmat error");
+        exit(1);
+    }
+
+    if (msg_key == -1) {
+        perror("ftok failed");
+        exit(1);
+    }
+
+    *msg_queue_id = msgget(msg_key, 0600);
+    if (*msg_queue_id < 0) {
+        perror("Nie udało się połączyć z kolejką komunikatów");
+        exit(1);
+    }
+
+    int shmTrucksId = shmget(shared_trucks_key, sizeof(Truck) * (TRUCK_NUMBER + 1), 0600);
+    if (shmTrucksId < 0) {
+        perror("shmget error");
+        exit(1);
+    }
+
+    *sharedTrucks = (Truck*)shmat(shmTrucksId, NULL, 0);
+    if (sharedTrucks == (void*)-1) {
+       perror("shmat error");
+      exit(1);
+    }
+
+
+    *semid_conveyor_capacity = semget(key_capacity, 1, 0600); 
 }

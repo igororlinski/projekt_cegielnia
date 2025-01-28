@@ -2,44 +2,14 @@
 #include <unistd.h>
 #include <signal.h>
 #include "brickyard.h"
+static Truck* sent_truck = NULL;
+Truck* sharedTrucks;
+TruckQueue* truck_queue;
 
-void initializeTrucks(Truck* sharedTrucks, int numTrucks) {
-    pthread_mutexattr_t attr;
-    pthread_mutexattr_init(&attr);
-    pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
-
-    for (int i = 0; i < numTrucks; i++) {
-        sharedTrucks[i].id = i + 1;
-        sharedTrucks[i].current_weight = 0;
-        sharedTrucks[i].max_capacity = MAX_TRUCK_CAPACITY;
-        sharedTrucks[i].in_transit = 0;
-        pthread_mutex_init(&sharedTrucks[i].mutex, &attr);
-        sharedTrucks[i].next = NULL;
-    }
-
-    pthread_mutexattr_destroy(&attr);
-}
-
-void initializeTruckQueue(TruckQueue* truck_queue) {
-    pthread_mutexattr_t attr;
-    pthread_mutexattr_init(&attr);
-    pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
-
-    pthread_mutex_init(&truck_queue->mutex, &attr);
-    pthread_condattr_t cond_attr;
-    pthread_condattr_init(&cond_attr);
-    pthread_condattr_setpshared(&cond_attr, PTHREAD_PROCESS_SHARED); 
-
-    pthread_cond_init(&truck_queue->cond, &cond_attr);
-
-    truck_queue->front = NULL;
-    truck_queue->rear = NULL;
-
-    pthread_mutexattr_destroy(&attr);
-    pthread_condattr_destroy(&cond_attr);
-}
-
-static Truck *sent_truck = NULL;
+void attach_to_memory(Truck **sharedTrucks, TruckQueue **truck_queue);
+void addTruckToQueue(TruckQueue* truck_queue, Truck* truck, void* sharedTrucks);
+Truck* removeTruckFromQueue(TruckQueue* queue, Truck* to_be_removed_truck);
+void sendTruck(Truck* truck);
 
 void truckSignalHandler(int sig) {
     switch(sig) {
@@ -49,8 +19,12 @@ void truckSignalHandler(int sig) {
     }
 }
 
-void truckProcess(Truck* this_truck) {
+int main(int argc __attribute__((unused)), char *argv[]) {
+    attach_to_memory(&sharedTrucks, &truck_queue);
+    int this_truck_id = atoi(argv[1]);
+    Truck* this_truck = &sharedTrucks[this_truck_id];
     sent_truck = this_truck;
+
     struct sigaction sa;
     sa.sa_handler = truckSignalHandler;
     sigemptyset(&sa.sa_mask);
@@ -61,9 +35,9 @@ void truckProcess(Truck* this_truck) {
         exit(1);
     }
     
-    while (continue_production) {
+    while (1) {
         pthread_mutex_lock(&this_truck->mutex);
-
+ 
         if (this_truck->current_weight == this_truck->max_capacity) {
             this_truck->in_transit = 1;
             pthread_mutex_unlock(&this_truck->mutex);
@@ -75,55 +49,55 @@ void truckProcess(Truck* this_truck) {
     }
 }
 
-Truck* assignBrickToTruck(Brick* brick) {
+
+void addTruckToQueue(TruckQueue* truck_queue, Truck* truck, void* sharedTrucks) {
     pthread_mutex_lock(&truck_queue->mutex);
-    pthread_mutex_lock(&truck_queue->front->mutex);
 
-    truck_queue->front->current_weight += getBrickWeight(brick);
-    
-    pthread_mutex_unlock(&truck_queue->front->mutex);
-    pthread_mutex_unlock(&truck_queue->mutex);
-    return truck_queue->front;
-}
+    size_t truck_offset = (char*)truck - (char*)sharedTrucks + 72;
 
-void addTruckToQueue(TruckQueue* q, Truck* truck) {
-    pthread_mutex_lock(&q->mutex);
-
-    if (q->rear == NULL) {
-        q->front = truck;
-        q->rear = truck;
+    if (truck_queue->rear == 0) {
+        truck_queue->front = truck_offset;
+        truck_queue->rear = truck_offset;
     } else {
-        q->rear->next = truck;
-        q->rear = truck;
+        Truck* rear_truck = get_truck(truck_queue, truck_queue->rear, sharedTrucks);
+        rear_truck->next = truck_offset;
+        truck_queue->rear = truck_offset;
     }
 
-    pthread_cond_signal(&q->cond); 
-    pthread_mutex_unlock(&q->mutex);
+    pthread_cond_signal(&truck_queue->cond); 
+    pthread_mutex_unlock(&truck_queue->mutex);
 }
 
 Truck* removeTruckFromQueue(TruckQueue* queue, Truck* to_be_removed_truck) {
     pthread_mutex_lock(&queue->mutex);
 
-    Truck* current = queue->front;
+    size_t current_offset = queue->front;
+    size_t previous_offset = 0;
+
+    Truck* current = NULL;
     Truck* previous = NULL;
 
-    while (current != NULL) {
+    while (current_offset != 0) {
+        current = (get_truck(truck_queue, queue->front, sharedTrucks));
         if (current->id == to_be_removed_truck->id) {
-            if (previous == NULL) {
+            if (previous == 0) {
                 queue->front = current->next;
             } else {
-                previous->next = current->next;
+                previous= get_truck(queue, previous_offset, sharedTrucks);
+                if (previous != NULL) {
+                    previous ->next = current->next;
+                }
             }
-            if (current == queue->rear) {
-                queue->rear = previous;
+            if (current->next == 0) {
+                queue->rear = previous_offset;
             }
 
             pthread_mutex_unlock(&queue->mutex);
             return current;
         }
 
-        previous = current;
-        current = current->next;
+        previous_offset = current_offset;
+        current_offset = current->next;
     }
 
     pthread_mutex_unlock(&queue->mutex);
@@ -139,5 +113,35 @@ void sendTruck(Truck* truck) {
     printf("Ciężarówka nr %d wróciła do fabryki.\n", truck->id);
     truck->current_weight = 0;
     truck->in_transit = 0;
-    addTruckToQueue(truck_queue, truck);
+    addTruckToQueue(truck_queue, truck, (void*)sharedTrucks);
+}
+
+void attach_to_memory(Truck **sharedTrucks, TruckQueue **truck_queue) {
+    key_t truck_queue_key = ftok (".", 'Z');
+    key_t shared_trucks_key = ftok(".", 'U');
+    
+    int truck_queue_shm_id = shmget(truck_queue_key, sizeof(TruckQueue), 0600);
+    if (truck_queue_shm_id < 0) {
+        perror("shmget error");
+        exit(1);
+    }
+
+    *truck_queue = (TruckQueue*)shmat(truck_queue_shm_id, NULL, 0);
+    if (truck_queue == (void*)-1) {
+        perror("shmat error");
+        exit(1);
+    }
+
+    int shmTrucksId = shmget(shared_trucks_key, sizeof(Truck) * (TRUCK_NUMBER + 1), 0600);
+    if (shmTrucksId < 0) {
+        perror("shmget error");
+        exit(1);
+    }
+
+    *sharedTrucks = (Truck*)shmat(shmTrucksId, NULL, 0);
+    if (sharedTrucks == (void*)-1) {
+       perror("shmat error");
+      exit(1);
+    }
+
 }

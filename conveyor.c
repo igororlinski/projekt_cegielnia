@@ -1,48 +1,21 @@
 #include "brickyard.h"
-
-struct sembuf p = {0, -1, 0};
-struct sembuf v = {0, 1, 0};
-
-key_t key_add, key_remove, key_capacity, key_weight;
 int semid_add_brick, semid_remove_brick, semid_conveyor_capacity, semid_weight_capacity;
+ConveyorBelt* conveyor;
+Truck* sharedTrucks;
+TruckQueue* truck_queue;
 
-void initializeConveyor(ConveyorBelt* q) {
-    q->front = 0;
-    q->rear = -1;
-    q->last_brick_id = 0; 
+void attach_to_memory(ConveyorBelt** conveyor, int *semid_conveyor_capacity, int *semid_weight_capacity, int* semid_add_brick, int* semid_remove_brick, Truck **sharedTrucks, TruckQueue **truck_queue);
+void removeBrick(ConveyorBelt* q);
+void conveyorCheckAndUnloadBricks(ConveyorBelt* q);
+Truck* assignBrickToTruck(Brick* brick);
 
-    pthread_mutexattr_t attr;
-    pthread_mutexattr_init(&attr);
-    pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
-    pthread_mutex_init(&q->mutex, &attr);
-    pthread_mutexattr_destroy(&attr);
-    
-    key_add = ftok(".", 'A');
-    key_remove = ftok(".", 'B');
-    key_capacity = ftok(".", 'C');
-    key_weight = ftok(".", 'D'); 
-
-    semid_add_brick = semget(key_add, 1, IPC_CREAT | 0600);
-    semid_remove_brick = semget(key_remove, 1, IPC_CREAT | 0600);
-    semid_conveyor_capacity = semget(key_capacity, 1, IPC_CREAT | 0600); 
-    semid_weight_capacity = semget(key_weight, 1, IPC_CREAT | 0600); 
-
-    semctl(semid_add_brick, 0, SETVAL, 1);
-    semctl(semid_remove_brick, 0, SETVAL, 1);
-    semctl(semid_conveyor_capacity, 0, SETVAL, MAX_CONVEYOR_BRICKS_NUMBER);
-    semctl(semid_weight_capacity, 0, SETVAL, MAX_CONVEYOR_BRICKS_WEIGHT);
-}
-
-void addBrick(ConveyorBelt* q, int workerId, Brick* brick) {
-    q->rear = (q->rear + 1) % MAX_CONVEYOR_BRICKS_NUMBER;
-    q->last_brick_id++;
-    brick->id = q->last_brick_id;
-    brick->ad = clock();
-
-    q->bricks[q->rear] = *brick;
-    printf("Pracownik P%d dodał cegłę o wadze %d na taśmę. ID cegły: %d        Liczba cegieł na taśmie: %d      Łączna waga cegieł na taśmie: %d\n", workerId, getBrickWeight(brick), brick->id, MAX_CONVEYOR_BRICKS_NUMBER - semctl(semid_conveyor_capacity, 0, GETVAL), MAX_CONVEYOR_BRICKS_WEIGHT - semctl(semid_weight_capacity, 0, GETVAL));
-
-    semop(semid_add_brick, &v, 1);
+int main() {
+    attach_to_memory(&conveyor, &semid_conveyor_capacity, &semid_weight_capacity, &semid_add_brick, &semid_remove_brick, &sharedTrucks, &truck_queue);
+    while (1) {
+        conveyorCheckAndUnloadBricks(conveyor);
+        usleep(SLEEP_TIME/10);
+    }
+    return 1;
 }
 
 void removeBrick(ConveyorBelt* q) {
@@ -60,7 +33,7 @@ void removeBrick(ConveyorBelt* q) {
     Truck* assigned_truck;
 
     while (1) {
-    if ((truck_queue->front->max_capacity - truck_queue->front->current_weight) < brick_weight) {
+    if (get_truck(truck_queue, truck_queue->front, sharedTrucks)->max_capacity - (get_truck(truck_queue, truck_queue->front, sharedTrucks)->current_weight) < brick_weight) {
         continue;
     }
     else {
@@ -84,7 +57,7 @@ void removeBrick(ConveyorBelt* q) {
 
 void conveyorCheckAndUnloadBricks(ConveyorBelt* q) {
     pthread_mutex_lock(&q->mutex);
-    if (semctl(semid_conveyor_capacity, 0, GETVAL) == MAX_CONVEYOR_BRICKS_NUMBER || truck_queue->front == NULL) {
+    if (semctl(semid_conveyor_capacity, 0, GETVAL) == MAX_CONVEYOR_BRICKS_NUMBER || get_truck(truck_queue, truck_queue->front, sharedTrucks) == NULL) {
         pthread_mutex_unlock(&q->mutex);
         return;
     }   
@@ -98,3 +71,66 @@ void conveyorCheckAndUnloadBricks(ConveyorBelt* q) {
         removeBrick(q);
     }
 }
+
+Truck* assignBrickToTruck(Brick* brick) {
+    pthread_mutex_lock(&truck_queue->mutex);
+    pthread_mutex_lock(&(get_truck(truck_queue, truck_queue->front, sharedTrucks))->mutex);
+
+    get_truck(truck_queue, truck_queue->front, sharedTrucks)->current_weight += getBrickWeight(brick);
+    
+    pthread_mutex_unlock(&(get_truck(truck_queue, truck_queue->front, sharedTrucks))->mutex);
+    pthread_mutex_unlock(&truck_queue->mutex);
+    return get_truck(truck_queue, truck_queue->front, sharedTrucks);
+}
+
+void attach_to_memory(ConveyorBelt** conveyor, int *semid_conveyor_capacity, int *semid_weight_capacity, int* semid_add_brick, int* semid_remove_brick, Truck **sharedTrucks, TruckQueue **truck_queue) {
+    key_t conveyor_key = ftok(".", 'Y');
+    key_t key_capacity = ftok(".", 'C');
+    key_t key_add = ftok(".", 'A');
+    key_t key_weight = ftok(".", 'D');
+    key_t key_remove = ftok(".", 'B');
+    key_t truck_queue_key = ftok (".", 'Z');
+    key_t shared_trucks_key = ftok(".", 'U');
+    
+    int truck_queue_shm_id = shmget(truck_queue_key, sizeof(TruckQueue), 0600);
+    if (truck_queue_shm_id < 0) {
+        perror("shmget error");
+        exit(1);
+    }
+
+    *truck_queue = (TruckQueue*)shmat(truck_queue_shm_id, NULL, 0);
+    if (truck_queue == (void*)-1) {
+        perror("shmat error");
+        exit(1);
+    }
+
+    int shmTrucksId = shmget(shared_trucks_key, sizeof(Truck) * (TRUCK_NUMBER + 1), 0600);
+    if (shmTrucksId < 0) {
+        perror("shmget error");
+        exit(1);
+    }
+
+    *sharedTrucks = (Truck*)shmat(shmTrucksId, NULL, 0);
+    if (sharedTrucks == (void*)-1) {
+       perror("shmat error");
+      exit(1);
+    }
+    int conveyor_shm_id = shmget(conveyor_key, sizeof(ConveyorBelt), 0600);
+    if (conveyor_shm_id < 0) {
+        perror("shmget error");
+        exit(1);
+    }
+
+    *conveyor = (ConveyorBelt*)shmat(conveyor_shm_id, NULL, 0);
+    if (conveyor == (void*)-1) {
+        perror("shmat error");
+        exit(1);
+    }
+
+    *semid_conveyor_capacity = semget(key_capacity, 1, 0600);
+    *semid_weight_capacity = semget(key_weight, 1, 0600);
+    *semid_add_brick = semget(key_add, 1, 0600);
+    *semid_remove_brick = semget(key_remove, 1, 0600);
+}
+
+

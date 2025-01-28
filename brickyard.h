@@ -21,7 +21,7 @@
 #define WORKER_MIN_TIME 10000
 #define TRUCK_RETURN_TIME 100
 
-#define BRICK_STORAGE_SIZE 90
+#define BRICK_STORAGE_SIZE 200
 #define MAX_BRICK_SIZE 3
 #define MAX_CONVEYOR_BRICKS_NUMBER 15
 #define MAX_CONVEYOR_BRICKS_WEIGHT 22
@@ -55,44 +55,33 @@ typedef struct Truck {
     int in_transit;
     pid_t pid;
     pthread_mutex_t mutex;
-    struct Truck* next;
+    size_t next;
 } Truck;
 
 typedef struct TruckQueue {
-    Truck* front;
-    Truck* rear;
+    size_t front;
+    size_t rear;
     pthread_mutex_t mutex;
     pthread_cond_t cond;
 } TruckQueue;
 
-extern struct sembuf p;
-extern struct sembuf v;
+struct sembuf p = {0, -1, 0};
+struct sembuf v = {0, 1, 0};
 
-extern ConveyorBelt* conveyor;
-extern key_t key_add, key_remove, key_capacity, key_weight, msg_key;
-extern int semid_add_brick, semid_remove_brick, semid_conveyor_capacity, semid_weight_capacity;
-extern volatile sig_atomic_t continue_production;
-extern Truck sharedTrucks[TRUCK_NUMBER];
-extern TruckQueue* truck_queue;
-extern char *brick_storage;
-extern int msg_queue_id;
-void signalHandler(int sig);
-void initializeConveyor(ConveyorBelt* q);
-void addBrick(ConveyorBelt* q, int id, Brick* brick);
-void conveyorCheckAndUnloadBricks(ConveyorBelt* q);
+int getBrickWeight(Brick* brick) {
+    int brick_weight = 0;
+    for (int i = 0; i < MAX_BRICK_SIZE; i++) {
+        if (brick->weight[i] != '1')
+            return brick_weight;
+        brick_weight++;
+    }
+    return brick_weight;
+}
 
-void worker(int workerId, ConveyorBelt* conveyor, int lower_limit, int upper_limit);
-int tryAddingBrick(int workerId, ConveyorBelt* conveyor, char* storage, int lower_limit);
-int getBrickWeight(Brick* brick);
-
-void initializeTrucks(Truck* sharedTrucks, int numTrucks);
-void truckProcess(Truck* this_truck);
-Truck* assignBrickToTruck(Brick* brick);
-void addTruckToQueue(TruckQueue* q, Truck* truck);
-Truck* removeTruckFromQueue(TruckQueue* q, Truck* truck);
-void initializeTruckQueue(TruckQueue* q);
-void sendTruck(Truck* truck);
-
-void* dispatcher(ConveyorBelt* conveyor);
+Truck* get_truck(TruckQueue* queue, size_t offset, Truck* shm_base) {
+    (void)queue;
+    if (offset == 0) return NULL; 
+    return (Truck*)((char*)shm_base + offset - 72);
+}
 
 #endif
