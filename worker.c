@@ -17,7 +17,7 @@ int main(int argc __attribute__((unused)), char *argv[]) {
     srand(time(NULL) + getpid());
     while (1) {
         if (SLEEP_TIME != 0) {
-            int random_time = (int)(0.2*SLEEP_TIME) + rand() % (SLEEP_TIME - (int)(0.2*SLEEP_TIME) + 1);
+            int random_time = (int)(0.5*SLEEP_TIME) + rand() % (SLEEP_TIME - (int)(0.5*SLEEP_TIME) + 1);
             usleep(random_time);
         }
         if (upper_limit - lower_limit < workerId) {
@@ -61,9 +61,19 @@ int tryAddingBrick(int workerId, ConveyorBelt* conveyor, char* storage, int lowe
           printf("\033[38;5;116m[P] \033[38;5;109mPracownik\033[0m \033[38;5;%dmP%d\033[0m \033[38;5;109mczeka na dodanie cegły o wadze\033[0m %d\033[38;5;109m na taśmę z powodu przeciążenia taśmy.\033[0m\n", 18 + workerId + (workerId - 1)*11, workerId, brick_weight);
     }
     
-    semop(semid_add_brick, &p, 1);
-    semop(semid_weight_capacity, &op_weight, 1);
-    semop(semid_conveyor_capacity, &p, 1);
+    if (semop(semid_add_brick, &p, 1) == -1) {
+        perror("semop failed for add brick semaphore");
+        return lower_limit;
+    }
+    if (semop(semid_weight_capacity, &op_weight, 1) == -1) {
+        perror("semop failed for weight capacity semaphore");
+        return lower_limit;
+    }
+    if (semop(semid_conveyor_capacity, &p, 1) == -1) {
+        perror("semop failed for conveyor capacity semaphore");
+        return lower_limit;
+    }    
+    
     addBrick(conveyor, workerId, &newBrick);    
 
     return lower_limit;
@@ -109,22 +119,37 @@ void attach_to_memory(ConveyorBelt** conveyor, int *msg_queue_id, char **brick_s
     *brick_storage = shmat(brick_storage_id, NULL, 0);
     if (brick_storage == (void*)-1) {
        perror("shmat error");
-      exit(1);
+        exit(1);
     }
 
-    *semid_conveyor_capacity = semget(key_capacity, 1, 0600); 
+    *semid_conveyor_capacity = semget(key_capacity, 1, 0600);
+    if (*semid_conveyor_capacity == -1) {
+        perror("semget failed for conveyor capacity");
+        exit(EXIT_FAILURE);
+    }
+
     *semid_weight_capacity = semget(key_weight, 1, 0600);
+    if (*semid_weight_capacity == -1) {
+        perror("semget failed for weight capacity");
+        exit(EXIT_FAILURE);
+    }
+
     *semid_add_brick = semget(key_add, 1, 0600);
+    if (*semid_add_brick == -1) {
+        perror("semget failed for add brick semaphore");
+        exit(EXIT_FAILURE);
+    }
+
 }
 
 void addBrick(ConveyorBelt* q, int workerId, Brick* brick) {
     q->rear = (q->rear + 1) % MAX_CONVEYOR_BRICKS_NUMBER;
     q->last_brick_id++;
     brick->id = q->last_brick_id;
-    brick->ad = clock();
+    brick->ad = get_current_time();
 
     q->bricks[q->rear] = *brick;
-    printf("\033[38;5;70m[+] \033[38;5;242mPracownik \033[38;5;%dmP%d\033[0m \033[38;5;242mdodał cegłę o wadze\033[0m %d \033[38;5;242mna taśmę. ID cegły:\033[0m %d\033[38;5;242m        Liczba cegieł na taśmie:\033[0m %d\033[38;5;88m/\033[0m%d\033[38;5;242m       Łączna waga cegieł na taśmie:\033[0m %d\033[38;5;88m/\033[0m%d\n", 18 + workerId + (workerId - 1)*11, workerId, getBrickWeight(brick), brick->id, MAX_CONVEYOR_BRICKS_NUMBER - semctl(semid_conveyor_capacity, 0, GETVAL), MAX_CONVEYOR_BRICKS_WEIGHT - semctl(semid_weight_capacity, 0, GETVAL), MAX_CONVEYOR_BRICKS_NUMBER, MAX_CONVEYOR_BRICKS_WEIGHT);
+    printf("\033[38;5;70m[+] \033[38;5;242mPracownik \033[38;5;%dmP%d\033[0m \033[38;5;242mdodał cegłę o wadze\033[0m %d \033[38;5;242mna taśmę. ID cegły:\033[0m %d\033[38;5;242m        Liczba cegieł na taśmie:\033[0m %d\033[38;5;88m/\033[0m%d\033[38;5;242m       Łączna waga cegieł na taśmie:\033[0m %d\033[38;5;88m/\033[0m%d\n", 18 + workerId + (workerId - 1)*11, workerId, getBrickWeight(brick), brick->id, MAX_CONVEYOR_BRICKS_NUMBER - semctl(semid_conveyor_capacity, 0, GETVAL), MAX_CONVEYOR_BRICKS_NUMBER, MAX_CONVEYOR_BRICKS_WEIGHT - semctl(semid_weight_capacity, 0, GETVAL), MAX_CONVEYOR_BRICKS_WEIGHT);
 
     semop(semid_add_brick, &v, 1);
 }

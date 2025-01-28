@@ -18,9 +18,9 @@
 
 #define SLEEP_TIME 0
 #define CONVEYOR_TRANSPORT_TIME 5
-#define TRUCK_RETURN_TIME 10
+#define TRUCK_RETURN_TIME 25
 
-#define BRICK_STORAGE_SIZE 90
+#define BRICK_STORAGE_SIZE 1500
 #define MAX_BRICK_SIZE 3
 #define MAX_CONVEYOR_BRICKS_NUMBER 15
 #define MAX_CONVEYOR_BRICKS_WEIGHT 22
@@ -30,8 +30,7 @@
 typedef struct Brick {
     int id;
     char weight[MAX_BRICK_SIZE];
-    struct timeval added_time;
-    clock_t ad;
+    double ad;
 } Brick;
 
 typedef struct ConveyorBelt {
@@ -81,6 +80,12 @@ Truck* get_truck(TruckQueue* queue, size_t offset, Truck* shm_base) {
     (void)queue;
     if (offset == 0) return NULL; 
     return (Truck*)((char*)shm_base + offset - 72);
+}
+
+double get_current_time() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return tv.tv_sec + tv.tv_usec / 1e6;
 }
 
 #endif

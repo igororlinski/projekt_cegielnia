@@ -42,13 +42,15 @@ int main() {
 
         if (!front_truck->in_transit && getBrickWeight(&conveyor->bricks[conveyor->front]) > (front_truck->max_capacity - front_truck->current_weight)) { 
             front_truck->in_transit = 1;
-            kill(front_truck->pid, SIGUSR1); 
+            if (kill(front_truck->pid, SIGUSR1) == -1) {
+                perror("kill error (front_truck)");
+            }
         }
 
         pthread_mutex_unlock(&front_truck->mutex);  
         pthread_mutex_unlock(&truck_queue->mutex);
 
-        usleep(SLEEP_TIME); 
+        usleep(SLEEP_TIME/10); 
     }
 
     pthread_cancel(monitor_thread);
@@ -75,9 +77,9 @@ void* monitorTheProduction(void* arg) {
     Truck* last_truck;
     while (1) {
         usleep(SLEEP_TIME);
+        pthread_mutex_lock(&truck_queue->mutex);
         if (semctl(semid_conveyor_capacity, 0, GETVAL) == MAX_CONVEYOR_BRICKS_NUMBER && get_truck(truck_queue, truck_queue->front, sharedTrucks)->current_weight > 0) {
             last_truck = get_truck(truck_queue, truck_queue->front, sharedTrucks);
-            pthread_mutex_lock(&truck_queue->mutex);
             pthread_mutex_lock(&last_truck->mutex);
             kill(get_truck(truck_queue, truck_queue->front, sharedTrucks)->pid, SIGUSR1); 
             pthread_mutex_unlock(&last_truck->mutex);  
@@ -85,11 +87,16 @@ void* monitorTheProduction(void* arg) {
             break;
         }
         else if (semctl(semid_conveyor_capacity, 0, GETVAL) == MAX_CONVEYOR_BRICKS_NUMBER && get_truck(truck_queue, truck_queue->front, sharedTrucks)->current_weight == 0) {
+            pthread_mutex_unlock(&truck_queue->mutex);
             break;
+        }
+        else {
+        pthread_mutex_unlock(&truck_queue->mutex);
         }
     }
     while(1) {
         usleep(SLEEP_TIME);
+        pthread_mutex_lock(&truck_queue->mutex);
         if (isQueueFull(truck_queue) == 1) {
             kill(getppid(), SIGUSR2);
             break;
@@ -100,8 +107,17 @@ void* monitorTheProduction(void* arg) {
 } 
 
 int isQueueFull(TruckQueue* truck_queue) {
-    pthread_mutex_lock(&truck_queue->mutex);
     Truck* current = get_truck(truck_queue, truck_queue->front, sharedTrucks);
+    if (TRUCK_NUMBER == 1) {
+        if (current == NULL) {
+            pthread_mutex_unlock(&truck_queue->mutex);
+            return 0;
+        }
+        else {
+            pthread_mutex_unlock(&truck_queue->mutex);
+            return 1; 
+        }
+    }
 
     int counted_trucks[TRUCK_NUMBER];
     for (int i = 0; i < TRUCK_NUMBER; i++) {
@@ -109,11 +125,18 @@ int isQueueFull(TruckQueue* truck_queue) {
     }
 
     for (int i = 0; i < TRUCK_NUMBER; i++) {
-        if (current->id == counted_trucks[i])
-            break;
+        if (current->id == counted_trucks[i] || current == NULL) {
+            pthread_mutex_unlock(&truck_queue->mutex);
+            return 0;
+        }
         if (counted_trucks[i] == 0) {
             counted_trucks[i] = current->id;
+            printf("ID: %d", counted_trucks[i]);
             current = get_truck(truck_queue, current->next, sharedTrucks);
+            if (current == NULL) {
+                pthread_mutex_unlock(&truck_queue->mutex);
+                return 0;
+            }
         }
     }
 

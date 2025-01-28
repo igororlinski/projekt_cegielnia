@@ -20,11 +20,17 @@ int main() {
 
 void removeBrick(ConveyorBelt* q) {
     pthread_mutex_lock(&q->mutex);
+     if (semop(semid_remove_brick, &p, 1) == -1) {
+        perror("Error decrementing semaphore for removing bricks");
+        pthread_mutex_unlock(&q->mutex);
+        return;
+    }
+
     struct sembuf op;
 
     if (semctl(semid_conveyor_capacity, 0, GETVAL)  == MAX_CONVEYOR_BRICKS_NUMBER) {
         printf("\033[38;5;90m[C] \033[38;5;136mTaśma jest pusta!\033[0m\n");
-        semop(semid_remove_brick, &v, 1);
+        pthread_mutex_unlock(&q->mutex);
         return;
     }
 
@@ -44,14 +50,20 @@ void removeBrick(ConveyorBelt* q) {
     printf("\033[38;5;124m[-] \033[38;5;242mCegła o wadze\033[0m %d\033[38;5;242m wpada do ciężarówki nr\033[0m %d\033[38;5;242m. Zapełnienie ciężarówki:\033[0m %d\033[38;5;88m/\033[0m%d\033[38;5;242m. ID cegły:\033[0m %d\n", brick_weight, assigned_truck->id, assigned_truck->current_weight, assigned_truck->max_capacity, brick_id);
     q->front = (q->front + 1) % MAX_CONVEYOR_BRICKS_NUMBER;
     pthread_mutex_unlock(&q->mutex);
-    semop(semid_conveyor_capacity, &v, 1);
+    if (semop(semid_conveyor_capacity, &v, 1) == -1) {
+        perror("Error incrementing conveyor capacity semaphore");
+    }
 
     op.sem_num = 0;
     op.sem_op = brick_weight;
     op.sem_flg = 0;
-    semop(semid_weight_capacity, &op, 1);
+    if (semop(semid_weight_capacity, &op, 1) == -1) {
+        perror("Error incrementing weight capacity semaphore");
+    }
 
-    semop(semid_remove_brick, &v, 1);
+    if (semop(semid_remove_brick, &v, 1) == -1) {
+        perror("Error incrementing weight capacity semaphore");
+    }
 }
 
 void conveyorCheckAndUnloadBricks(ConveyorBelt* q) {
@@ -61,9 +73,8 @@ void conveyorCheckAndUnloadBricks(ConveyorBelt* q) {
         return;
     }   
     double time_taken;
-    clock_t n = clock();
     Brick* front_brick = &q->bricks[q->front];
-    time_taken = (double)(n - front_brick->ad) * 100 / (double)CLOCKS_PER_SEC;
+    time_taken =  get_current_time() - front_brick->ad;
     pthread_mutex_unlock(&q->mutex);
     if ((semctl(semid_conveyor_capacity, 0, GETVAL) < MAX_CONVEYOR_BRICKS_NUMBER) && (time_taken >= (double)(CONVEYOR_TRANSPORT_TIME * SLEEP_TIME)/1000000)) {
         removeBrick(q);
@@ -74,11 +85,12 @@ Truck* assignBrickToTruck(Brick* brick) {
     pthread_mutex_lock(&truck_queue->mutex);
     pthread_mutex_lock(&(get_truck(truck_queue, truck_queue->front, sharedTrucks))->mutex);
 
-    get_truck(truck_queue, truck_queue->front, sharedTrucks)->current_weight += getBrickWeight(brick);
+    Truck* front_truck = get_truck(truck_queue, truck_queue->front, sharedTrucks);
+    front_truck->current_weight += getBrickWeight(brick);
     
     pthread_mutex_unlock(&(get_truck(truck_queue, truck_queue->front, sharedTrucks))->mutex);
     pthread_mutex_unlock(&truck_queue->mutex);
-    return get_truck(truck_queue, truck_queue->front, sharedTrucks);
+    return front_truck;
 }
 
 void attach_to_memory(ConveyorBelt** conveyor, int *semid_conveyor_capacity, int *semid_weight_capacity, int* semid_add_brick, int* semid_remove_brick, Truck **sharedTrucks, TruckQueue **truck_queue) {

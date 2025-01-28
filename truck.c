@@ -21,6 +21,7 @@ void truckSignalHandler(int sig) {
 
 int main(int argc __attribute__((unused)), char *argv[]) {
     attach_to_memory(&sharedTrucks, &truck_queue);
+
     int this_truck_id = atoi(argv[1]);
     Truck* this_truck = &sharedTrucks[this_truck_id];
     sent_truck = this_truck;
@@ -40,7 +41,10 @@ int main(int argc __attribute__((unused)), char *argv[]) {
         if (this_truck->current_weight == this_truck->max_capacity) {
             this_truck->in_transit = 1;
             pthread_mutex_unlock(&this_truck->mutex);
-            kill(getpid(), SIGUSR1);
+            if (kill(getpid(), SIGUSR1) == -1) {
+                perror("kill error");
+                exit(EXIT_FAILURE);
+            }
         }
         else {
             pthread_mutex_unlock(&this_truck->mutex);
@@ -56,13 +60,15 @@ void addTruckToQueue(TruckQueue* truck_queue, Truck* truck, void* sharedTrucks) 
     if (truck_queue->rear == 0) {
         truck_queue->front = truck_offset;
         truck_queue->rear = truck_offset;
+        if (pthread_cond_signal(&truck_queue->cond) != 0) {
+            perror("pthread_cond_signal error");
+        }
     } else {
         Truck* rear_truck = get_truck(truck_queue, truck_queue->rear, sharedTrucks);
         rear_truck->next = truck_offset;
         truck_queue->rear = truck_offset;
     }
 
-    pthread_cond_signal(&truck_queue->cond); 
     pthread_mutex_unlock(&truck_queue->mutex);
 }
 
@@ -76,6 +82,10 @@ Truck* removeTruckFromQueue(TruckQueue* queue, Truck* to_be_removed_truck) {
 
     while (current_offset != 0) {
         current = (get_truck(truck_queue, queue->front, sharedTrucks));
+        if (current == NULL) {
+            pthread_mutex_unlock(&queue->mutex);
+            return NULL;
+        }
         if (current->id == to_be_removed_truck->id) {
             if (previous == 0) {
                 queue->front = current->next;
@@ -108,8 +118,10 @@ void sendTruck(Truck* truck) {
     usleep(TRUCK_RETURN_TIME*SLEEP_TIME);
 
     printf("\033[38;5;136m[T] \033[38;5;108mCiężarówka nr\033[0m %d\033[38;5;108m wróciła do fabryki.\033[0m\n", truck->id);
+    pthread_mutex_lock(&truck->mutex);
     truck->current_weight = 0;
     truck->in_transit = 0;
+    pthread_mutex_unlock(&truck->mutex);
     addTruckToQueue(truck_queue, truck, (void*)sharedTrucks);
 }
 
