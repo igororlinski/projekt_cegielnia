@@ -282,7 +282,7 @@ void cleanup(pid_t worker_pids[], pid_t truck_pids[], pid_t dispatcher_pid, pid_
     kill(conveyor_pid, SIGTERM);
     waitpid(conveyor_pid, NULL, 0);
 
-    printf("\nZakończenie programu... Zwolnienie zasobów.\n");
+    printf("\n\033[38;5;160mCegielnia kończy pracę... Zwolnienie zasobów.\033[0m\n");
 
     if (msgctl(msg_queue_id, IPC_RMID, NULL) == -1) {
     perror("msgctl(IPC_RMID) error");

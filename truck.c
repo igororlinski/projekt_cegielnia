@@ -37,7 +37,6 @@ int main(int argc __attribute__((unused)), char *argv[]) {
     
     while (1) {
         pthread_mutex_lock(&this_truck->mutex);
- 
         if (this_truck->current_weight == this_truck->max_capacity) {
             this_truck->in_transit = 1;
             pthread_mutex_unlock(&this_truck->mutex);
@@ -52,7 +51,6 @@ int main(int argc __attribute__((unused)), char *argv[]) {
 
 void addTruckToQueue(TruckQueue* truck_queue, Truck* truck, void* sharedTrucks) {
     pthread_mutex_lock(&truck_queue->mutex);
-
     size_t truck_offset = (char*)truck - (char*)sharedTrucks + 72;
 
     if (truck_queue->rear == 0) {
@@ -70,7 +68,6 @@ void addTruckToQueue(TruckQueue* truck_queue, Truck* truck, void* sharedTrucks) 
 
 Truck* removeTruckFromQueue(TruckQueue* queue, Truck* to_be_removed_truck) {
     pthread_mutex_lock(&queue->mutex);
-
     size_t current_offset = queue->front;
     size_t previous_offset = 0;
 
@@ -106,11 +103,11 @@ Truck* removeTruckFromQueue(TruckQueue* queue, Truck* to_be_removed_truck) {
 
 void sendTruck(Truck* truck) {
     removeTruckFromQueue(truck_queue, truck); 
-    printf("Ciężarówka nr %d odjeżdża z %d jednostkami cegieł.\n", truck->id, truck->current_weight);
+    printf("\033[38;5;136m[T] \033[38;5;144mCiężarówka nr\033[0m %d\033[38;5;144m odjeżdża z\033[0m %d\033[38;5;144m jednostkami cegieł.\033[0m\n", truck->id, truck->current_weight);
 
     usleep(TRUCK_RETURN_TIME*SLEEP_TIME);
 
-    printf("Ciężarówka nr %d wróciła do fabryki.\n", truck->id);
+    printf("\033[38;5;136m[T] \033[38;5;108mCiężarówka nr\033[0m %d\033[38;5;108m wróciła do fabryki.\033[0m\n", truck->id);
     truck->current_weight = 0;
     truck->in_transit = 0;
     addTruckToQueue(truck_queue, truck, (void*)sharedTrucks);
